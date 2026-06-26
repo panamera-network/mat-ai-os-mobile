@@ -1,25 +1,46 @@
 {
   "expo": {
-    "name": "mat-ai-os-mobile",
+    "name": "MAT.AI OS",
     "slug": "mat-ai-os-mobile",
+    "scheme": "matais",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a0a0f",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "network.panamera.matais",
+      "deploymentTarget": "15.0",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "MAT.AI OS uses the microphone for voice input to the Orchestrator.",
+        "NSPhotoLibraryUsageDescription": "MAT.AI OS lets you attach photos to a task.",
+        "NSCameraUsageDescription": "MAT.AI OS lets you take a photo to attach to a task."
+      }
     },
     "android": {
+      "package": "network.panamera.matais",
+      "minSdkVersion": 29,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0a0a0f",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["RECORD_AUDIO", "READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#8b5cf6"
+        }
+      ]
+    ]
   }
 }

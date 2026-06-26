@@ -1,20 +1,33 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar'
+import { useEffect } from 'react'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
+import RootNavigator from './src/navigation/RootNavigator'
+import { SettingsProvider, useSettings } from './src/context/SettingsContext'
+import { BackendStatusProvider } from './src/context/BackendStatusContext'
+import { registerForPushNotifications } from './src/notifications/pushNotifications'
+
+function PushNotificationBootstrap() {
+  const { loaded, notificationsEnabled } = useSettings()
+
+  useEffect(() => {
+    if (loaded && notificationsEnabled) {
+      registerForPushNotifications()
+    }
+  }, [loaded, notificationsEnabled])
+
+  return null
+}
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
-  );
+    <SafeAreaProvider>
+      <SettingsProvider>
+        <BackendStatusProvider>
+          <PushNotificationBootstrap />
+          <RootNavigator />
+          <StatusBar style="light" />
+        </BackendStatusProvider>
+      </SettingsProvider>
+    </SafeAreaProvider>
+  )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
