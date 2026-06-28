@@ -1,17 +1,25 @@
+// src/screens/SettingsScreen.tsx
 import { useEffect, useState } from 'react'
-import { ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { colors } from '../theme/colors'
+import { StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { matOsClient, type IdentityProfile } from '../api/MatOSClient'
 import { useSettings } from '../context/SettingsContext'
 import { registerForPushNotifications } from '../notifications/pushNotifications'
+import BottomSheet from '../components/BottomSheet'
+import { useTheme } from '../context/ThemeContext'
 
 const MODES: Array<{ id: 'work' | 'trading' | 'learning'; label: string; icon: string }> = [
-  { id: 'work', label: 'Work', icon: '💼' },
-  { id: 'trading', label: 'Trading', icon: '📈' },
-  { id: 'learning', label: 'Learning', icon: '🎓' },
+  { id: 'work', label: 'Work', icon: 'W' },
+  { id: 'trading', label: 'Trading', icon: 'T' },
+  { id: 'learning', label: 'Learning', icon: 'L' },
 ]
 
-export default function SettingsScreen() {
+interface SettingsScreenProps {
+  visible: boolean
+  onClose: () => void
+}
+
+export default function SettingsScreen({ visible, onClose }: SettingsScreenProps) {
+  const { colors, isDark, toggleTheme } = useTheme()
   const { backendUrl, setBackendUrl, notificationsEnabled, setNotificationsEnabled } = useSettings()
   const [urlInput, setUrlInput] = useState(backendUrl)
   const [savedFlash, setSavedFlash] = useState(false)
@@ -20,14 +28,16 @@ export default function SettingsScreen() {
   const [nickname, setNickname] = useState('')
 
   useEffect(() => {
-    matOsClient.getIdentity().then((profile) => {
-      if (profile) {
-        setIdentity(profile)
-        setName(profile.name)
-        setNickname(profile.nickname)
-      }
-    })
-  }, [])
+    if (visible) {
+      matOsClient.getIdentity().then((profile) => {
+        if (profile) {
+          setIdentity(profile)
+          setName(profile.name)
+          setNickname(profile.nickname)
+        }
+      })
+    }
+  }, [visible])
 
   const saveUrl = async () => {
     await setBackendUrl(urlInput)
@@ -51,12 +61,12 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>Backend</Text>
-      <View style={styles.card}>
-        <Text style={styles.label}>Backend URL</Text>
+    <BottomSheet visible={visible} onClose={onClose} title="Settings">
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Backend</Text>
+      <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Backend URL</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.bgPanel, borderColor: colors.border, color: colors.textPrimary }]}
           value={urlInput}
           onChangeText={setUrlInput}
           placeholder="http://192.168.1.10:8000"
@@ -64,83 +74,154 @@ export default function SettingsScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <TouchableOpacity style={styles.saveBtn} onPress={saveUrl}>
+        <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.accentPurple }]} onPress={saveUrl}>
           <Text style={styles.saveBtnText}>{savedFlash ? 'Saved!' : 'Save'}</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>Profile</Text>
-      <View style={styles.card}>
-        <Text style={styles.label}>Name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={colors.textSecondary} />
-        <Text style={styles.label}>Nickname</Text>
-        <TextInput style={styles.input} value={nickname} onChangeText={setNickname} placeholderTextColor={colors.textSecondary} />
-        <TouchableOpacity style={styles.saveBtn} onPress={saveProfile}>
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Profile</Text>
+      <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Name</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.bgPanel, borderColor: colors.border, color: colors.textPrimary }]}
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor={colors.textSecondary}
+        />
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Nickname</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.bgPanel, borderColor: colors.border, color: colors.textPrimary }]}
+          value={nickname}
+          onChangeText={setNickname}
+          placeholderTextColor={colors.textSecondary}
+        />
+        <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.accentPurple }]} onPress={saveProfile}>
           <Text style={styles.saveBtnText}>Save profile</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>Mode</Text>
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Mode</Text>
       <View style={styles.modeRow}>
-        {MODES.map((mode) => (
-          <TouchableOpacity
-            key={mode.id}
-            style={[styles.modeBtn, identity?.active_mode === mode.id && styles.modeBtnActive]}
-            onPress={() => setMode(mode.id)}
-          >
-            <Text style={styles.modeIcon}>{mode.icon}</Text>
-            <Text style={styles.modeLabel}>{mode.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {MODES.map((mode) => {
+          const active = identity?.active_mode === mode.id
+          return (
+            <TouchableOpacity
+              key={mode.id}
+              style={[
+                styles.modeBtn,
+                { backgroundColor: colors.bgCard, borderColor: colors.border },
+                active && { borderColor: colors.accentPurple, backgroundColor: colors.accentPurple + '24' },
+              ]}
+              onPress={() => setMode(mode.id)}
+            >
+              <Text style={[styles.modeIcon, { color: colors.textPrimary, borderColor: colors.border }]}>{mode.icon}</Text>
+              <Text style={[styles.modeLabel, { color: colors.textPrimary }]}>{mode.label}</Text>
+            </TouchableOpacity>
+          )
+        })}
       </View>
 
-      <Text style={styles.sectionTitle}>Notifications</Text>
-      <View style={styles.card}>
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Notifications</Text>
+      <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
         <View style={styles.switchRow}>
-          <Text style={styles.label}>Push notifications</Text>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Push notifications</Text>
           <Switch
             value={notificationsEnabled}
             onValueChange={toggleNotifications}
             trackColor={{ false: colors.border, true: colors.accentPurple }}
           />
         </View>
-        <Text style={styles.hint}>Daily briefing (8 AM) and weekly review (Mon 9 AM) are pushed from MAT-AI-OS.</Text>
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>Daily briefing (8 AM) and weekly review (Mon 9 AM) are pushed from MAT-AI-OS.</Text>
       </View>
-    </ScrollView>
+
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Appearance</Text>
+      <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+        <View style={styles.switchRow}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Night mode</Text>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: colors.border, true: colors.accentPurple }}
+          />
+        </View>
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>Pure white by day, galaxy black by night.</Text>
+      </View>
+
+      <View style={{ height: 40 }} />
+    </BottomSheet>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bgApp },
-  content: { padding: 16, gap: 8 },
   sectionTitle: {
-    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 12,
-    marginBottom: 6,
+    marginTop: 16,
+    marginBottom: 8,
   },
-  card: { backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 8 },
-  label: { color: colors.textSecondary, fontSize: 11 },
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 8,
+  },
+  label: {
+    fontSize: 11,
+  },
   input: {
-    backgroundColor: colors.bgPanel,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.textPrimary,
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 13,
   },
-  saveBtn: { backgroundColor: colors.accentPurple, borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginTop: 4 },
-  saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  modeRow: { flexDirection: 'row', gap: 8 },
-  modeBtn: { flex: 1, backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center', paddingVertical: 14, gap: 4 },
-  modeBtnActive: { borderColor: colors.accentPurple, backgroundColor: 'rgba(139,92,246,0.18)' },
-  modeIcon: { fontSize: 20 },
-  modeLabel: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  hint: { color: colors.textSecondary, fontSize: 11, lineHeight: 16 },
+  saveBtn: {
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modeBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 6,
+  },
+  modeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    textAlign: 'center',
+    lineHeight: 27,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hint: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 6,
+  },
 })

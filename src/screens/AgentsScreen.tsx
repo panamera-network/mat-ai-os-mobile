@@ -1,7 +1,10 @@
+// src/screens/AgentsScreen.tsx
 import { useCallback, useEffect, useState } from 'react'
-import { FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { colors } from '../theme/colors'
+import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { matOsClient, type Agent } from '../api/MatOSClient'
+import BottomSheet from '../components/BottomSheet'
+import ScrollViewWithScrollbar from '../components/ScrollViewWithScrollbar'
+import { useTheme } from '../context/ThemeContext'
 
 interface SkillSummary {
   id: string
@@ -9,7 +12,13 @@ interface SkillSummary {
   domain: string
 }
 
-export default function AgentsScreen() {
+interface AgentsScreenProps {
+  visible: boolean
+  onClose: () => void
+}
+
+export default function AgentsScreen({ visible, onClose }: AgentsScreenProps) {
+  const { colors } = useTheme()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
@@ -25,13 +34,12 @@ export default function AgentsScreen() {
   }, [])
 
   useEffect(() => {
-    loadAgents()
-  }, [loadAgents])
+    if (visible) loadAgents()
+  }, [visible, loadAgents])
 
   const openCreate = async () => {
     setCreateOpen(true)
-    const skills = await matOsClient.getSkillsByDomain()
-    setSkillsByDomain(skills)
+    setSkillsByDomain(await matOsClient.getSkillsByDomain())
   }
 
   const toggleSkill = (id: string) => {
@@ -60,103 +68,111 @@ export default function AgentsScreen() {
   const domains = Object.keys(skillsByDomain)
 
   return (
-    <View style={styles.screen}>
-      <FlatList
-        data={agents}
-        keyExtractor={(a) => a.agent_id}
-        contentContainerStyle={styles.list}
-        refreshing={loading}
-        onRefresh={loadAgents}
-        ListEmptyComponent={!loading ? <Text style={styles.emptyHint}>No agents yet.</Text> : null}
-        renderItem={({ item }) => (
-          <View style={styles.agentCard}>
-            <View style={styles.agentHeader}>
-              <View style={[styles.statusDot, item.status === 'active' ? styles.statusDotActive : styles.statusDotIdle]} />
-              <Text style={styles.agentName}>{item.name}</Text>
-              <Text style={styles.agentDomain}>{item.domain}</Text>
-            </View>
-            <Text style={styles.agentSkills}>{item.skill_ids.join(', ')}</Text>
-          </View>
-        )}
-      />
+    <BottomSheet visible={visible} onClose={onClose} title="Agents">
+      {agents.length === 0 && !loading && (
+        <Text style={[styles.emptyHint, { color: colors.textSecondary }]}>No agents yet.</Text>
+      )}
 
-      <TouchableOpacity style={styles.fab} onPress={openCreate}>
+      {agents.map((item) => (
+        <View key={item.agent_id} style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          <View style={styles.agentHeader}>
+            <View style={[styles.statusDot, { backgroundColor: item.status === 'active' ? colors.accentGreen : colors.nodeIdle }]} />
+            <Text style={[styles.agentName, { color: colors.textPrimary }]}>{item.name}</Text>
+            <Text style={[styles.agentDomain, { color: colors.accentPurple }]}>{item.domain}</Text>
+          </View>
+          <Text style={[styles.agentSkills, { color: colors.textSecondary }]}>{item.skill_ids.join(', ')}</Text>
+        </View>
+      ))}
+
+      <TouchableOpacity style={[styles.fab, { backgroundColor: colors.accentPurple }]} onPress={openCreate}>
         <Text style={styles.fabText}>+ New Agent</Text>
       </TouchableOpacity>
 
       <Modal visible={createOpen} animationType="slide" transparent onRequestClose={() => setCreateOpen(false)}>
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>New Agent</Text>
+          <View style={[styles.modalCard, { backgroundColor: colors.bgPanel, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>New Agent</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.input, { backgroundColor: colors.bgCard, borderColor: colors.border, color: colors.textPrimary }]}
               placeholder="Agent name"
               placeholderTextColor={colors.textSecondary}
               value={name}
               onChangeText={setName}
             />
-            <Text style={styles.modalLabel}>Domain</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
-              {domains.map((domain) => (
-                <TouchableOpacity
-                  key={domain}
-                  style={[styles.chip, selectedDomain === domain && styles.chipActive]}
-                  onPress={() => {
-                    setSelectedDomain(domain)
-                    setSelectedSkillIds(new Set())
-                  }}
-                >
-                  <Text style={[styles.chipText, selectedDomain === domain && styles.chipTextActive]}>{domain}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Domain</Text>
+            <ScrollViewWithScrollbar style={styles.chipRow}>
+              {domains.map((domain) => {
+                const active = selectedDomain === domain
+                return (
+                  <TouchableOpacity
+                    key={domain}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: colors.bgCard, borderColor: colors.border },
+                      active && { backgroundColor: colors.accentPurple + '30', borderColor: colors.accentPurple },
+                    ]}
+                    onPress={() => {
+                      setSelectedDomain(domain)
+                      setSelectedSkillIds(new Set())
+                    }}
+                  >
+                    <Text style={[styles.chipText, { color: active ? colors.textPrimary : colors.textSecondary }, active && styles.chipTextActive]}>
+                      {domain}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollViewWithScrollbar>
 
             {selectedDomain && (
               <>
-                <Text style={styles.modalLabel}>Skills</Text>
-                <ScrollView style={styles.skillsScroll}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>Skills</Text>
+                <ScrollViewWithScrollbar style={styles.skillsScroll}>
                   {(skillsByDomain[selectedDomain] ?? []).map((skill) => (
                     <TouchableOpacity key={skill.id} style={styles.skillRow} onPress={() => toggleSkill(skill.id)}>
-                      <Text style={styles.skillCheckbox}>{selectedSkillIds.has(skill.id) ? '☑' : '☐'}</Text>
-                      <Text style={styles.skillRowText}>{skill.name}</Text>
+                      <Text style={[styles.skillCheckbox, { color: colors.accentPurple }]}>
+                        {selectedSkillIds.has(skill.id) ? 'selected' : 'open'}
+                      </Text>
+                      <Text style={[styles.skillRowText, { color: colors.textPrimary }]}>{skill.name}</Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </ScrollViewWithScrollbar>
               </>
             )}
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setCreateOpen(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
+              <TouchableOpacity
+                style={[styles.cancelBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+                onPress={() => setCreateOpen(false)}
+              >
+                <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalCreateBtn} onPress={submitCreate} disabled={creating}>
-                <Text style={styles.modalCreateText}>{creating ? 'Creating…' : 'Create'}</Text>
+              <TouchableOpacity style={[styles.createBtn, { backgroundColor: colors.accentPurple }]} onPress={submitCreate} disabled={creating}>
+                <Text style={styles.createText}>{creating ? 'Creating...' : 'Create'}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+
+      <View style={{ height: 20 }} />
+    </BottomSheet>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bgApp },
-  list: { padding: 16, gap: 10 },
-  emptyHint: { color: colors.textSecondary, textAlign: 'center', marginTop: 40 },
-  agentCard: { backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
+  emptyHint: { textAlign: 'center', marginTop: 40 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 10 },
   agentHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusDotActive: { backgroundColor: colors.accentGreen },
-  statusDotIdle: { backgroundColor: colors.nodeIdle },
-  agentName: { color: colors.textPrimary, fontWeight: '700', fontSize: 14, flex: 1 },
-  agentDomain: { color: colors.accentPurple, fontSize: 11, fontWeight: '600' },
-  agentSkills: { color: colors.textSecondary, fontSize: 11, marginTop: 6 },
+  agentName: { fontWeight: '700', fontSize: 14, flex: 1 },
+  agentDomain: { fontSize: 11, fontWeight: '700' },
+  agentSkills: { fontSize: 11, marginTop: 6 },
   fab: {
     position: 'absolute',
     bottom: 20,
     right: 20,
-    backgroundColor: colors.accentPurple,
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 12,
@@ -164,45 +180,37 @@ const styles = StyleSheet.create({
   fabText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   modalCard: {
-    backgroundColor: colors.bgPanel,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     padding: 18,
     maxHeight: '85%',
     borderTopWidth: 1,
-    borderColor: colors.border,
   },
-  modalTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800', marginBottom: 12 },
-  modalInput: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 10,
+  modalTitle: { fontSize: 16, fontWeight: '800', marginBottom: 12 },
+  input: {
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.textPrimary,
     padding: 10,
     fontSize: 14,
   },
-  modalLabel: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', marginTop: 14, marginBottom: 6, textTransform: 'uppercase' },
-  chipRow: { flexDirection: 'row' },
+  label: { fontSize: 11, fontWeight: '800', marginTop: 14, marginBottom: 6, textTransform: 'uppercase' },
+  chipRow: { maxHeight: 50 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: colors.bgCard,
     borderWidth: 1,
-    borderColor: colors.border,
     marginRight: 8,
   },
-  chipActive: { backgroundColor: 'rgba(139,92,246,0.18)', borderColor: colors.accentPurple },
-  chipText: { color: colors.textSecondary, fontSize: 12 },
-  chipTextActive: { color: colors.textPrimary, fontWeight: '700' },
+  chipText: { fontSize: 12 },
+  chipTextActive: { fontWeight: '700' },
   skillsScroll: { maxHeight: 180 },
   skillRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  skillCheckbox: { color: colors.accentPurple, fontSize: 16 },
-  skillRowText: { color: colors.textPrimary, fontSize: 13 },
+  skillCheckbox: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  skillRowText: { fontSize: 13 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  modalCancelBtn: { flex: 1, padding: 12, borderRadius: 10, backgroundColor: colors.bgCard, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  modalCancelText: { color: colors.textSecondary, fontWeight: '600' },
-  modalCreateBtn: { flex: 1, padding: 12, borderRadius: 10, backgroundColor: colors.accentPurple, alignItems: 'center' },
-  modalCreateText: { color: '#fff', fontWeight: '700' },
+  cancelBtn: { flex: 1, padding: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  cancelText: { fontWeight: '700' },
+  createBtn: { flex: 1, padding: 12, borderRadius: 12, alignItems: 'center' },
+  createText: { color: '#fff', fontWeight: '700' },
 })
