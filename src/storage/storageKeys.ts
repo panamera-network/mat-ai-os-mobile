@@ -3,4 +3,5 @@ export const STORAGE_KEYS = {
   sessionId: 'mat-ai-os:session-id',
   notificationsEnabled: 'mat-ai-os:notifications-enabled',
   expoPushToken: 'mat-ai-os:expo-push-token',
+  offlineQueue: 'mat-ai-os:offline-queue',
 } as const

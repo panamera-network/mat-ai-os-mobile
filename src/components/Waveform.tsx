@@ -1,22 +1,10 @@
 // src/components/MatWaveform.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native'
+import { View, StyleSheet, Dimensions } from 'react-native'
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg'
 
 const STATES = ['idle', 'listening', 'thinking'] as const
 type WaveformState = typeof STATES[number]
-
-const NAMES: Record<WaveformState, string> = {
-  idle: 'Idle',
-  listening: 'Mendengar...',
-  thinking: 'Berfikir...',
-}
-
-const LABELS: Record<WaveformState, string> = {
-  idle: 'Ketuk untuk mula',
-  listening: 'Bercakap sekarang',
-  thinking: 'Sedang memproses...',
-}
 
 const DOT_COLORS: Record<WaveformState, string> = {
   idle: '#555577',
@@ -149,7 +137,6 @@ export default function MatWaveform({ state, compact = false }: MatWaveformProps
   const [segments, setSegments] = useState<Segment[]>([])
   const [gradientColors, setGradientColors] = useState<[string, string, string]>(GRADIENT_STOPS.idle)
   const [currentColor, setCurrentColor] = useState(DOT_COLORS.idle)
-  const [currentName, setCurrentName] = useState(NAMES.idle)
 
   const animate = useCallback(() => {
     timeRef.current += 0.016
@@ -167,7 +154,6 @@ export default function MatWaveform({ state, compact = false }: MatWaveformProps
     const stops = stopsA.map((c, i) => lerpColor(c, stopsB[i], ease)) as [string, string, string]
     setGradientColors(stops)
     setCurrentColor(lerpColor(DOT_COLORS[prev], DOT_COLORS[cur], ease))
-    setCurrentName(NAMES[cur])
 
     if (cur === 'thinking' && morphDone) {
       const circlePts = getCirclePoints(t, W, H, COUNT)
@@ -198,13 +184,6 @@ export default function MatWaveform({ state, compact = false }: MatWaveformProps
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      {!compact && (
-        <>
-          <Text style={[styles.name, { color: currentColor }]}>{currentName}</Text>
-          <Text style={[styles.label, { color: currentColor }]}>{LABELS[state]}</Text>
-        </>
-      )}
-
       <View style={styles.svgContainer}>
         {!compact && <View style={[styles.glow, { backgroundColor: currentColor + '1a' }]} />}
         <Svg width={W} height={H} style={styles.svg}>
@@ -274,17 +253,6 @@ const styles = StyleSheet.create({
   },
   containerCompact: {
     paddingVertical: 0,
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginBottom: 12,
-    opacity: 0.7,
   },
   svgContainer: {
     position: 'relative',

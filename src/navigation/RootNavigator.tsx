@@ -1,7 +1,7 @@
 // src/navigation/RootNavigator.tsx
 import { NavigationContainer, DarkTheme, DefaultTheme, type Theme } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, PanResponder, Animated } from 'react-native'
 import HomeScreen from '../screens/HomeScreen'
 import AgentsScreen from '../screens/AgentsScreen'
 import GoalsScreen from '../screens/GoalsScreen'
@@ -12,16 +12,187 @@ import {
   MicIcon,
   StatsIcon,
   SettingsIcon,
+  MemoIcon,
+  ReminderIcon,
 } from '../theme/icons/MatIcons'
-import { useApp } from '../context/AppContext'
+import { useApp, type PttMode } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
-import React, { JSX } from 'react'
+import React, { JSX, useRef, useState } from 'react'
 
 export type RootTabParamList = {
   Home: undefined
 }
 
 const Tab = createBottomTabNavigator<RootTabParamList>()
+
+const PTT_MODES: Array<{ id: PttMode; label: string; color: string; icon: typeof MicIcon }> = [
+  { id: 'memo',     label: 'Memo',     color: '#0ea5e9', icon: MemoIcon },
+  { id: 'agent',    label: 'Agent',    color: '#7c3aed', icon: MicIcon },
+  { id: 'reminder', label: 'Reminder', color: '#f59e0b', icon: ReminderIcon },
+]
+
+// Fan positions relative to PTT orb center — arc going left (orb is right-side)
+const FAN_POSITIONS = [
+  { dx: -52,  dy: -108 }, // memo — upper left
+  { dx: -110, dy: -68  }, // agent — left
+  { dx: -122, dy: -8   }, // reminder — lower left
+]
+
+const HOLD_THRESHOLD_MS = 400
+const SWIPE_THRESHOLD = 45        // min px upward before fan opens
+const SWIPE_UP_RATIO = 2.0        // dy must be 2x bigger than |dx| — intentional upward only
+
+function PttOrb(): JSX.Element {
+  const { colors, isDark } = useTheme()
+  const { togglePTT, isRecording, pttMode, setPttMode, toggleComposer } = useApp()
+
+  const [fanOpen, setFanOpen] = useState(false)
+  const fanOpenRef = useRef(false)
+  const [hoveredMode, setHoveredMode] = useState<PttMode | null>(null)
+  const fanAnim = useRef(new Animated.Value(0)).current
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isHoldingRef = useRef(false)
+  const hasSwiped = useRef(false)
+
+  const orbBorder = isDark ? 'rgba(226,232,240,0.22)' : 'rgba(17,17,17,0.16)'
+  const activeMode = PTT_MODES.find(m => m.id === pttMode)!
+  const orbColor = isRecording ? '#ef4444' : activeMode.color
+
+  const openFan = () => {
+    fanOpenRef.current = true
+    setFanOpen(true)
+    setHoveredMode(pttMode)
+    Animated.spring(fanAnim, { toValue: 1, useNativeDriver: true, tension: 120, friction: 8 }).start()
+  }
+
+  const closeFan = (selectedMode?: PttMode) => {
+    fanOpenRef.current = false
+    Animated.timing(fanAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
+      setFanOpen(false)
+      setHoveredMode(null)
+    })
+    if (selectedMode) setPttMode(selectedMode)
+  }
+
+  const hoveredModeRef = useRef<PttMode | null>(null)
+  hoveredModeRef.current = hoveredMode
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        isHoldingRef.current = false
+        hasSwiped.current = false
+        // Start hold timer — fires if user doesn't swipe or release quickly
+        holdTimerRef.current = setTimeout(() => {
+          isHoldingRef.current = true
+          if (!hasSwiped.current) {
+            togglePTT() // start recording
+          }
+        }, HOLD_THRESHOLD_MS)
+      },
+      onPanResponderMove: (_, gs) => {
+        const isDeliberateSwipeUp = gs.dy < -SWIPE_THRESHOLD && Math.abs(gs.dy) >= Math.abs(gs.dx) * SWIPE_UP_RATIO
+        if (!hasSwiped.current && isDeliberateSwipeUp) {
+          hasSwiped.current = true
+          if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+          openFan()
+        }
+        if (fanOpenRef.current && gs.dy < -SWIPE_THRESHOLD) {
+          let closest: PttMode = 'agent'
+          let minDist = Infinity
+          FAN_POSITIONS.forEach((pos, i) => {
+            const dist = Math.sqrt((gs.dx - pos.dx) ** 2 + (gs.dy - pos.dy) ** 2)
+            if (dist < minDist) { minDist = dist; closest = PTT_MODES[i].id }
+          })
+          setHoveredMode(closest)
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+
+        if (hasSwiped.current && gs.dy < -SWIPE_THRESHOLD / 2) {
+          // Swipe up — confirm mode selection
+          closeFan(hoveredModeRef.current ?? undefined)
+        } else if (isHoldingRef.current) {
+          // Was holding → stop recording
+          togglePTT()
+        } else if (!hasSwiped.current) {
+          // Quick tap → open text composer
+          toggleComposer()
+        }
+        isHoldingRef.current = false
+        hasSwiped.current = false
+      },
+      onPanResponderTerminate: () => {
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+        if (isHoldingRef.current) togglePTT()
+        closeFan()
+        isHoldingRef.current = false
+        hasSwiped.current = false
+      },
+    })
+  ).current
+
+  return (
+    <View style={styles.pttContainer}>
+      {/* Fan items */}
+      {fanOpen && PTT_MODES.map((mode, i) => {
+        const pos = FAN_POSITIONS[i]
+        const isHovered = hoveredMode === mode.id
+        const Icon = mode.icon
+        return (
+          <Animated.View
+            key={mode.id}
+            style={[
+              styles.fanItem,
+              {
+                transform: [
+                  { translateX: fanAnim.interpolate({ inputRange: [0, 1], outputRange: [0, pos.dx] }) },
+                  { translateY: fanAnim.interpolate({ inputRange: [0, 1], outputRange: [0, pos.dy] }) },
+                  { scale: fanAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, isHovered ? 1.1 : 1] }) },
+                ],
+                opacity: fanAnim,
+                backgroundColor: isHovered ? mode.color : isDark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.92)',
+                borderColor: mode.color,
+              },
+            ]}
+          >
+            <Icon size={18} color={isHovered ? '#fff' : mode.color} strokeWidth={1.8} />
+            <Text style={[styles.fanLabel, { color: isHovered ? '#fff' : mode.color }]}>{mode.label}</Text>
+          </Animated.View>
+        )
+      })}
+
+      {/* PTT Orb */}
+      <View
+        style={[styles.pttOrb, isRecording && styles.pttOrbActive]}
+        {...panResponder.panHandlers}
+      >
+        <View style={[
+          styles.orbHalo,
+          {
+            backgroundColor: orbColor + '30',
+            borderColor: orbBorder,
+            boxShadow: `0 14px 34px ${orbColor}44`,
+          },
+        ]} />
+        <View style={[styles.orbCore, { backgroundColor: orbColor, borderColor: orbBorder }]}>
+          <View style={styles.orbSheen} />
+          <View style={[styles.orbHotspotCyan, { opacity: pttMode === 'agent' ? 1 : 0.4 }]} />
+          <View style={[styles.orbHotspotPink, { opacity: pttMode === 'agent' ? 1 : 0.4 }]} />
+          <MicIcon size={22} color="#fff" strokeWidth={1.9} />
+        </View>
+      </View>
+
+      {/* Mode label below orb */}
+      {!isRecording && pttMode !== 'agent' && (
+        <Text style={[styles.modeLabel, { color: activeMode.color }]}>{activeMode.label}</Text>
+      )}
+    </View>
+  )
+}
 
 // Custom tab bar component
 function CustomTabBar(): JSX.Element | null {
@@ -32,8 +203,6 @@ function CustomTabBar(): JSX.Element | null {
     setGoalsVisible,
     setSettingsVisible,
     toggleStats,
-    togglePTT,
-    isRecording,
     commandComposerVisible,
   } = useApp()
 
@@ -41,10 +210,6 @@ function CustomTabBar(): JSX.Element | null {
   const handleGoals = () => setGoalsVisible(true)
   const handleSettings = () => setSettingsVisible(true)
   const handleStats = () => toggleStats()
-
-  const handlePTT = () => {
-    togglePTT()
-  }
 
   if (commandComposerVisible) return null
 
@@ -56,8 +221,6 @@ function CustomTabBar(): JSX.Element | null {
   ]
   const glassBg = isDark ? 'rgba(15,23,42,0.76)' : 'rgba(255,255,255,0.74)'
   const glassShadow = isDark ? '0 14px 34px rgba(0,0,0,0.42)' : '0 12px 30px rgba(15, 23, 42, 0.10)'
-  const orbHalo = isDark ? 'rgba(79, 70, 229, 0.28)' : 'rgba(14, 165, 233, 0.16)'
-  const orbBorder = isDark ? 'rgba(226,232,240,0.22)' : 'rgba(17,17,17,0.16)'
 
   return (
     <View style={[styles.tabBar, { backgroundColor: colors.bgApp }]}>
@@ -123,19 +286,7 @@ function CustomTabBar(): JSX.Element | null {
         </TouchableOpacity>
       )}
 
-      <TouchableOpacity
-        style={[styles.pttOrb, isRecording && styles.pttOrbActive]}
-        onPress={handlePTT}
-        activeOpacity={0.76}
-      >
-        <View style={[styles.orbHalo, { backgroundColor: orbHalo, borderColor: orbBorder, boxShadow: isDark ? '0 14px 34px rgba(124, 58, 237, 0.28)' : '0 14px 34px rgba(14, 165, 233, 0.24)' }]} />
-        <View style={[styles.orbCore, { borderColor: orbBorder }, isRecording && styles.orbCoreActive]}>
-          <View style={styles.orbSheen} />
-          <View style={styles.orbHotspotCyan} />
-          <View style={styles.orbHotspotPink} />
-          <MicIcon size={22} color="#fff" strokeWidth={1.9} />
-        </View>
-      </TouchableOpacity>
+      <PttOrb />
     </View>
   )
 }
@@ -201,6 +352,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 18,
+    overflow: 'visible',
   },
   segmentedNav: {
     flex: 1,
@@ -267,13 +419,18 @@ const styles = StyleSheet.create({
     width: 1,
     height: 30,
   },
+  pttContainer: {
+    alignItems: 'center',
+    marginLeft: 10,
+    width: 76,
+    height: 76,
+  },
   pttOrb: {
     width: 76,
     height: 76,
     borderRadius: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 10,
   },
   pttOrbActive: {
     transform: [{ scale: 0.98 }],
@@ -292,11 +449,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#7c3aed',
     borderWidth: 1,
-  },
-  orbCoreActive: {
-    backgroundColor: '#ef4444',
   },
   orbSheen: {
     position: 'absolute',
@@ -325,5 +478,30 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     backgroundColor: 'rgba(236, 72, 153, 0.76)',
+  },
+  fanItem: {
+    position: 'absolute',
+    width: 68,
+    height: 58,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    // Center on the orb (76x76) — offset by half fanItem size
+    top: 9,   // (76 - 58) / 2
+    left: 4,  // (76 - 68) / 2
+  },
+  fanLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  modeLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 3,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 })

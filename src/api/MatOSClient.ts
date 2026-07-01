@@ -2,7 +2,39 @@
 // core/os-client.ts (Electron) — a thin client around the backend's REST API, no
 // silent fallback: failures come back as {ok:false, error} for the caller to surface.
 
+import Constants from 'expo-constants'
+
 export const DEFAULT_BASE_URL = 'http://localhost:8000'
+
+// Candidates tried in order during auto-discovery.
+function buildCandidates(): string[] {
+  const configured = (Constants.expoConfig?.extra as { backendUrl?: string } | undefined)?.backendUrl
+  const candidates: string[] = []
+  if (configured) candidates.push(configured.replace(/\/+$/, ''))
+  candidates.push('http://localhost:8000')
+  // Derive LAN candidates from the JS bundle URL (works in Expo Go / dev builds)
+  try {
+    const debugUrl = (Constants.expoConfig as unknown as { hostUri?: string })?.hostUri
+    if (debugUrl) {
+      const host = debugUrl.split(':')[0]
+      if (host && host !== 'localhost') {
+        candidates.push(`http://${host}:8000`)
+      }
+    }
+  } catch {}
+  return [...new Set(candidates)]
+}
+
+export async function discoverBackend(): Promise<string | null> {
+  const candidates = buildCandidates()
+  for (const url of candidates) {
+    try {
+      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2500) })
+      if (res.ok) return url
+    } catch {}
+  }
+  return null
+}
 
 export interface MatOSAttachment {
   uri: string
@@ -313,6 +345,44 @@ export class MatOSClient {
       })
     } catch {
       // best-effort
+    }
+  }
+
+  /** POST /obsidian/note — save a quick memo into the vault. */
+  async saveMemo(text: string): Promise<{ ok: true; filename: string } | MatOSError> {
+    try {
+      const now = new Date()
+      const title = `Memo ${now.toISOString().slice(0, 16).replace('T', ' ')}`
+      const content = `# ${title}\n\n${text}\n\n---\n_Captured via MAT.ai OS mobile_`
+      const response = await fetch(this.url('/obsidian/note'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, folder: 'Mobile/Memos' }),
+      })
+      if (!response.ok) return { ok: false, error: `Failed to save memo: HTTP ${response.status}` }
+      const data = (await response.json()) as { filename: string }
+      return { ok: true, filename: data.filename }
+    } catch {
+      return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
+    }
+  }
+
+  /** POST /obsidian/note — save a reminder into the vault. */
+  async saveReminder(text: string): Promise<{ ok: true; filename: string } | MatOSError> {
+    try {
+      const now = new Date()
+      const title = `Reminder ${now.toISOString().slice(0, 16).replace('T', ' ')}`
+      const content = `# ${title}\n\n- [ ] ${text}\n\n---\n_Captured via MAT.ai OS mobile_`
+      const response = await fetch(this.url('/obsidian/note'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, folder: 'Mobile/Reminders' }),
+      })
+      if (!response.ok) return { ok: false, error: `Failed to save reminder: HTTP ${response.status}` }
+      const data = (await response.json()) as { filename: string }
+      return { ok: true, filename: data.filename }
+    } catch {
+      return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
     }
   }
 

@@ -15,6 +15,7 @@ import { Audio } from 'expo-av'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
 import { matOsClient, type MatOSAttachment } from '../api/MatOSClient'
+import { enqueue } from '../storage/offlineQueue'
 import { useSettings } from '../context/SettingsContext'
 import { useBackendStatus } from '../context/BackendStatusContext'
 import { useApp } from '../context/AppContext'
@@ -28,6 +29,9 @@ import {
   MoreIcon,
   CloseIcon,
   AttachmentIcon,
+  MemoIcon,
+  ReminderIcon,
+  MicIcon,
 } from '../theme/icons/MatIcons'
 
 interface ChatMessage {
@@ -47,8 +51,20 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
   const insets = useSafeAreaInsets()
   const { colors, isDark } = useTheme()
   const { sessionId, newSession } = useSettings()
-  const { online, pendingTasks, health } = useBackendStatus()
-  const { setIsRecording, setCommandComposerVisible } = useApp()
+  const { online, pendingTasks, health, syncedCount } = useBackendStatus()
+  const prevSyncedCount = useRef(0)
+  const [syncToast, setSyncToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (syncedCount > prevSyncedCount.current) {
+      const diff = syncedCount - prevSyncedCount.current
+      setSyncToast(`${diff} item${diff > 1 ? 's' : ''} synced to Obsidian`)
+      const t = setTimeout(() => setSyncToast(null), 3000)
+      prevSyncedCount.current = syncedCount
+      return () => clearTimeout(t)
+    }
+  }, [syncedCount])
+  const { setIsRecording, setCommandComposerVisible, pttMode, composerToggle } = useApp()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
@@ -69,6 +85,7 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
       setComposerExpanded(false)
     }
   }, [statsToggle])
+
 
   useEffect(() => {
     if (pttToggle > 0) {
@@ -102,6 +119,11 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
     setTimeout(() => inputRef.current?.focus(), 80)
   }, [])
 
+  useEffect(() => {
+    if (composerToggle > 0) openComposer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerToggle])
+
   const closeComposer = useCallback(() => {
     setComposerExpanded(false)
     inputRef.current?.blur()
@@ -129,6 +151,29 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
 
     setPending(true)
     try {
+      // memo/reminder mode — typed text goes to Obsidian, not the agent
+      if (pttMode === 'memo' && text) {
+        const result = await matOsClient.saveMemo(text)
+        if (result.ok) {
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Memo saved — "${text}"` })
+        } else {
+          await enqueue('memo', text)
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Backend offline — memo queued locally. Will sync when online.` })
+        }
+        return
+      }
+
+      if (pttMode === 'reminder' && text) {
+        const result = await matOsClient.saveReminder(text)
+        if (result.ok) {
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Reminder set — "${text}"` })
+        } else {
+          await enqueue('reminder', text)
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Backend offline — reminder queued locally. Will sync when online.` })
+        }
+        return
+      }
+
       const outcome = await matOsClient.sendTask(
         text || `Attached file: ${file?.name ?? ''}`,
         sessionId,
@@ -217,10 +262,31 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
         name: 'recording.m4a',
         mimeType: 'audio/m4a',
       })
-      if (outcome.ok && outcome.text.trim()) {
-        await send(outcome.text.trim())
-      } else if (!outcome.ok) {
+      if (!outcome.ok) {
         appendMessage({ id: `${Date.now()}-error`, role: 'system', text: outcome.error })
+        return
+      }
+      const text = outcome.text.trim()
+      if (!text) return
+
+      if (pttMode === 'memo') {
+        const result = await matOsClient.saveMemo(text)
+        if (result.ok) {
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Memo saved — "${text}"` })
+        } else {
+          await enqueue('memo', text)
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Backend offline — memo queued locally. Will sync when online.` })
+        }
+      } else if (pttMode === 'reminder') {
+        const result = await matOsClient.saveReminder(text)
+        if (result.ok) {
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Reminder set — "${text}"` })
+        } else {
+          await enqueue('reminder', text)
+          appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: `Backend offline — reminder queued locally. Will sync when online.` })
+        }
+      } else {
+        await send(text)
       }
     } finally {
       setIsTranscribing(false)
@@ -248,6 +314,13 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
   const buttonBg = isDark ? 'rgba(15,23,42,0.74)' : 'rgba(255,255,255,0.72)'
   const inputBg = isDark ? 'rgba(15,23,42,0.88)' : '#ffffff'
   const subtleBg = isDark ? 'rgba(17,21,37,0.82)' : 'rgba(255,255,255,0.86)'
+
+  const PTT_MODE_META = {
+    agent:    { label: 'Agent Mode',    color: '#7c3aed', Icon: MicIcon },
+    memo:     { label: 'Memo Mode',     color: '#0ea5e9', Icon: MemoIcon },
+    reminder: { label: 'Reminder Mode', color: '#f59e0b', Icon: ReminderIcon },
+  }
+  const activeMeta = PTT_MODE_META[pttMode]
 
   return (
     <KeyboardAvoidingView
@@ -312,6 +385,12 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
           </View>
         )}
 
+        {syncToast && (
+          <View style={[styles.syncToast, { backgroundColor: colors.accentGreen + '22', borderColor: colors.accentGreen }]}>
+            <Text style={[styles.syncToastText, { color: colors.accentGreen }]}>✓ {syncToast}</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={[
             styles.waveformWrap,
@@ -325,6 +404,13 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
             <MatWaveform state={waveformState} compact />
           </View>
         </TouchableOpacity>
+
+        {!showChat && (
+          <View style={[styles.modeBadge, { borderColor: activeMeta.color + '55' }]}>
+            <activeMeta.Icon size={12} color={activeMeta.color} strokeWidth={2} />
+            <Text style={[styles.modeBadgeText, { color: activeMeta.color }]}>{activeMeta.label}</Text>
+          </View>
+        )}
 
         {showChat && (
           <ScrollView
@@ -391,19 +477,27 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
               </View>
             )}
 
+            {pttMode !== 'agent' && (
+              <View style={[styles.composerModeBadge, { backgroundColor: activeMeta.color + '18', borderColor: activeMeta.color + '66' }]}>
+                <activeMeta.Icon size={11} color={activeMeta.color} strokeWidth={2} />
+                <Text style={[styles.composerModeBadgeText, { color: activeMeta.color }]}>{activeMeta.label}</Text>
+              </View>
+            )}
+
             <View style={styles.composerRow}>
               <TouchableOpacity
                 style={[styles.plusButton, { backgroundColor: inputBg, borderColor: colors.border }]}
                 onPress={() => setAttachmentSheetVisible(true)}
-                disabled={pending || isTranscribing}
+                disabled={pending || isTranscribing || pttMode !== 'agent'}
               >
-                <PlusIcon size={26} color={colors.textPrimary} strokeWidth={1.8} />
+                <PlusIcon size={26} color={pttMode !== 'agent' ? colors.textSecondary : colors.textPrimary} strokeWidth={1.8} />
               </TouchableOpacity>
               <TextInput
                 ref={inputRef}
-                style={[styles.input, { backgroundColor: inputBg, borderColor: colors.border, color: colors.textPrimary }]}
+                style={[styles.input, { backgroundColor: inputBg, borderColor: pttMode !== 'agent' ? activeMeta.color + '66' : colors.border, color: colors.textPrimary }]}
                 value={input}
                 onChangeText={setInput}
+                placeholder={pttMode === 'memo' ? 'Type a memo...' : pttMode === 'reminder' ? 'Type a reminder...' : 'Ask MAT.ai OS...'}
                 placeholderTextColor={colors.textSecondary}
                 editable={!pending && !isTranscribing}
                 onSubmitEditing={() => send()}
@@ -547,6 +641,34 @@ const styles = StyleSheet.create({
     width: '100%',
     transform: [{ scale: 0.82 }],
   },
+  syncToast: {
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginBottom: 6,
+  },
+  syncToastText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modeBadge: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: -8,
+  },
+  modeBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   chatScroll: {
     flex: 1,
     marginTop: 4,
@@ -609,6 +731,22 @@ const styles = StyleSheet.create({
     maxWidth: 210,
     fontSize: 12,
     fontWeight: '600',
+  },
+  composerModeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  composerModeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   composerRow: {
     flexDirection: 'row',

@@ -1,6 +1,8 @@
 // src/context/AppContext.tsx
 import React, { createContext, useContext, useState, useCallback, JSX } from 'react'
 
+export type PttMode = 'agent' | 'memo' | 'reminder'
+
 export interface AppContextType {
   agentsVisible: boolean
   setAgentsVisible: (v: boolean) => void
@@ -18,6 +20,10 @@ export interface AppContextType {
   setCommandComposerVisible: (v: boolean) => void
   darkMode: boolean
   setDarkMode: (v: boolean) => void
+  pttMode: PttMode
+  setPttMode: (mode: PttMode) => void
+  composerToggle: number
+  toggleComposer: () => void
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -31,6 +37,12 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   const [isRecording, setIsRecording] = useState<boolean>(false)
   const [commandComposerVisible, setCommandComposerVisible] = useState<boolean>(false)
   const [darkMode, setDarkMode] = useState<boolean>(true)
+  const [pttMode, setPttMode] = useState<PttMode>('agent')
+  const [composerToggle, setComposerToggle] = useState<number>(0)
+
+  const toggleComposer = useCallback(() => {
+    setComposerToggle(k => k + 1)
+  }, [])
 
   const toggleStats = useCallback(() => {
     setStatsToggle(k => k + 1)
@@ -57,6 +69,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
     setCommandComposerVisible,
     darkMode,
     setDarkMode,
+    pttMode,
+    setPttMode,
+    composerToggle,
+    toggleComposer,
   }
 
   return (
