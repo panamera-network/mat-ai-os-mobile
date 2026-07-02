@@ -25,6 +25,16 @@ function buildCandidates(): string[] {
   return [...new Set(candidates)]
 }
 
+/** Check whether one specific backend URL is reachable (GET /health). */
+export async function probeBackend(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${url.replace(/\/+$/, '')}/health`, { signal: AbortSignal.timeout(2500) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function discoverBackend(): Promise<string | null> {
   const candidates = buildCandidates()
   for (const url of candidates) {
@@ -47,6 +57,9 @@ export interface TaskResult {
   text: string
   sessionId: string
   feedbackTaskId: string | null
+  // Set when the orchestrator was busy and the task went to the queue instead of
+  // running directly — poll waitForQueuedTask() with it to get the eventual result.
+  queuedTaskId: string | null
 }
 
 export interface MatOSError {
@@ -60,6 +73,7 @@ interface TaskResponseBody {
   result?: string | null
   session_id?: string | null
   queued?: boolean
+  task_id?: string | null
   feedback_task_id?: string | null
 }
 
@@ -187,13 +201,42 @@ export class MatOSClient {
     if (data.queued) {
       return {
         ok: true,
-        text: "MAT-AI-OS is busy right now — your task has been queued and will run shortly, BOSS.",
+        text: "MAT-AI-OS is busy right now — your task has been queued and the answer will appear here once it runs, BOSS.",
         sessionId: this.sessionId ?? '',
         feedbackTaskId: null,
+        queuedTaskId: data.task_id ?? null,
       }
     }
 
-    return { ok: true, text: data.result ?? '', sessionId: this.sessionId ?? '', feedbackTaskId: data.feedback_task_id ?? null }
+    return {
+      ok: true,
+      text: data.result ?? '',
+      sessionId: this.sessionId ?? '',
+      feedbackTaskId: data.feedback_task_id ?? null,
+      queuedTaskId: null,
+    }
+  }
+
+  /** Poll GET /queue/{task_id} until a queued task (see TaskResult.queuedTaskId) finishes.
+   *  Resolves with the result text, or {ok:false} on failure/cancellation/timeout. Never throws. */
+  async waitForQueuedTask(taskId: string): Promise<{ ok: true; text: string } | MatOSError> {
+    const intervalMs = 3000
+    const maxAttempts = 200 // ~10 minutes, then give up rather than poll forever
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      let record: { status: string; result: string | null; error: string | null }
+      try {
+        const response = await fetch(this.url(`/queue/${taskId}`), { signal: AbortSignal.timeout(5000) })
+        if (!response.ok) continue
+        record = (await response.json()) as { status: string; result: string | null; error: string | null }
+      } catch {
+        continue // transient network blip — keep polling
+      }
+      if (record.status === 'completed') return { ok: true, text: record.result ?? '' }
+      if (record.status === 'failed') return { ok: false, error: `Queued task failed: ${record.error ?? 'unknown error'}` }
+      if (record.status === 'cancelled') return { ok: false, error: 'The queued task was cancelled before it ran.' }
+    }
+    return { ok: false, error: 'Still waiting on the queued task — it will finish on the backend, but polling timed out.' }
   }
 
   /** Upload a recorded voice message and get back the transcribed text. */
@@ -229,30 +272,6 @@ export class MatOSClient {
       return (await response.json()) as Agent[]
     } catch {
       return []
-    }
-  }
-
-  async createAgent(name: string, domain: string, skillIds: string[]): Promise<Agent | null> {
-    try {
-      const response = await fetch(this.url('/agents/create'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, domain, skill_ids: skillIds }),
-      })
-      if (!response.ok) return null
-      return (await response.json()) as Agent
-    } catch {
-      return null
-    }
-  }
-
-  async getSkillsByDomain(): Promise<Record<string, Array<{ id: string; name: string; domain: string }>>> {
-    try {
-      const response = await fetch(this.url('/skills'), { signal: AbortSignal.timeout(5000) })
-      if (!response.ok) return {}
-      return (await response.json()) as Record<string, Array<{ id: string; name: string; domain: string }>>
-    } catch {
-      return {}
     }
   }
 

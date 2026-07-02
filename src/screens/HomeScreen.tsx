@@ -136,6 +136,17 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
     inputRef.current?.blur()
   }, [])
 
+  // A queued task's answer arrives via the backend's queue worker, not the /task
+  // response — poll for it in the background and drop it into the chat when it lands.
+  const watchQueuedTask = async (taskId: string) => {
+    const result = await matOsClient.waitForQueuedTask(taskId)
+    if (result.ok) {
+      appendMessage({ id: `${Date.now()}-assistant`, role: 'assistant', text: result.text })
+    } else {
+      appendMessage({ id: `${Date.now()}-error`, role: 'system', text: result.error })
+    }
+  }
+
   const send = async (textOverride?: string) => {
     const text = (textOverride ?? input).trim()
     const file = attachment
@@ -187,6 +198,7 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
           text: outcome.text,
           feedbackTaskId: outcome.feedbackTaskId,
         })
+        if (outcome.queuedTaskId) void watchQueuedTask(outcome.queuedTaskId)
       } else {
         appendMessage({ id: `${Date.now()}-error`, role: 'system', text: outcome.error })
       }

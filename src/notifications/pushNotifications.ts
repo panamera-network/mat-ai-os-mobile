@@ -2,7 +2,7 @@
 // MAT-AI-OS (POST /notifications/register-device), and configures how notifications
 // display in the foreground. The backend pushes daily briefing (8 AM KL) and weekly
 // review (Monday 9 AM KL) notifications to every registered device — see
-// core/notifications.py's send_push() on the backend.
+// core/push_notifications.py's send_push() on the backend.
 
 import * as Device from 'expo-device'
 import * as Notifications from 'expo-notifications'

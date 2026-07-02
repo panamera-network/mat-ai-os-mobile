@@ -1,5 +1,6 @@
 // src/screens/SettingsScreen.tsx
-import { StyleSheet, Switch, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import { useSettings } from '../context/SettingsContext'
 import { registerForPushNotifications } from '../notifications/pushNotifications'
 import BottomSheet from '../components/BottomSheet'
@@ -12,15 +13,45 @@ interface SettingsScreenProps {
 
 export default function SettingsScreen({ visible, onClose }: SettingsScreenProps) {
   const { colors, isDark, toggleTheme } = useTheme()
-  const { notificationsEnabled, setNotificationsEnabled } = useSettings()
+  const { notificationsEnabled, setNotificationsEnabled, backendUrl, setBackendUrl } = useSettings()
+  const [urlDraft, setUrlDraft] = useState(backendUrl)
+
+  useEffect(() => {
+    setUrlDraft(backendUrl)
+  }, [backendUrl])
 
   const toggleNotifications = async (enabled: boolean) => {
     await setNotificationsEnabled(enabled)
     if (enabled) await registerForPushNotifications()
   }
 
+  const saveBackendUrl = async () => {
+    const cleaned = urlDraft.trim()
+    if (cleaned && cleaned !== backendUrl) await setBackendUrl(cleaned)
+  }
+
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Settings">
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Backend</Text>
+      <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+        <Text style={[styles.label, { color: colors.textPrimary }]}>Backend URL</Text>
+        <TextInput
+          style={[styles.urlInput, { color: colors.textPrimary, borderColor: colors.border }]}
+          value={urlDraft}
+          onChangeText={setUrlDraft}
+          onBlur={saveBackendUrl}
+          onSubmitEditing={saveBackendUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          placeholder="http://192.168.0.10:8000"
+          placeholderTextColor={colors.textSecondary}
+        />
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>
+          Where MAT-AI-OS is running — a LAN address or tunnel URL. Saved when you tap away.
+        </Text>
+      </View>
+
       <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Notifications</Text>
       <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
         <View style={styles.row}>
@@ -76,6 +107,13 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  urlInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
   },
   hint: {
     fontSize: 11,
