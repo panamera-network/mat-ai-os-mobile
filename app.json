@@ -11,7 +11,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "network.panamera.matais",
-      "deploymentTarget": "15.0",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "MAT.AI OS uses the microphone for voice input to the Orchestrator.",
         "NSPhotoLibraryUsageDescription": "MAT.AI OS lets you attach photos to a task.",
@@ -20,7 +19,6 @@
     },
     "android": {
       "package": "network.panamera.matais",
-      "minSdkVersion": 29,
       "adaptiveIcon": {
         "backgroundColor": "#0a0a0f",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,7 +26,11 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["RECORD_AUDIO", "READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"]
+      "permissions": [
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -42,6 +44,13 @@
         {
           "icon": "./assets/icon.png",
           "color": "#8b5cf6"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": { "deploymentTarget": "15.1" },
+          "android": { "minSdkVersion": 29 }
         }
       ]
     ]
