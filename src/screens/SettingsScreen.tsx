@@ -13,12 +13,17 @@ interface SettingsScreenProps {
 
 export default function SettingsScreen({ visible, onClose }: SettingsScreenProps) {
   const { colors, isDark, toggleTheme } = useTheme()
-  const { notificationsEnabled, setNotificationsEnabled, backendUrl, setBackendUrl } = useSettings()
+  const { notificationsEnabled, setNotificationsEnabled, backendUrl, setBackendUrl, apiKey, setApiKey } = useSettings()
   const [urlDraft, setUrlDraft] = useState(backendUrl)
+  const [apiKeyDraft, setApiKeyDraft] = useState(apiKey)
 
   useEffect(() => {
     setUrlDraft(backendUrl)
   }, [backendUrl])
+
+  useEffect(() => {
+    setApiKeyDraft(apiKey)
+  }, [apiKey])
 
   const toggleNotifications = async (enabled: boolean) => {
     await setNotificationsEnabled(enabled)
@@ -28,6 +33,10 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
   const saveBackendUrl = async () => {
     const cleaned = urlDraft.trim()
     if (cleaned && cleaned !== backendUrl) await setBackendUrl(cleaned)
+  }
+
+  const saveApiKey = async () => {
+    if (apiKeyDraft.trim() !== apiKey) await setApiKey(apiKeyDraft)
   }
 
   return (
@@ -49,6 +58,23 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
         />
         <Text style={[styles.hint, { color: colors.textSecondary }]}>
           Where MAT-AI-OS is running — a LAN address or tunnel URL. Saved when you tap away.
+        </Text>
+
+        <Text style={[styles.label, { color: colors.textPrimary }]}>API Key</Text>
+        <TextInput
+          style={[styles.urlInput, { color: colors.textPrimary, borderColor: colors.border }]}
+          value={apiKeyDraft}
+          onChangeText={setApiKeyDraft}
+          onBlur={saveApiKey}
+          onSubmitEditing={saveApiKey}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          placeholder="Only needed if the backend has MAT_API_KEY set"
+          placeholderTextColor={colors.textSecondary}
+        />
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>
+          Must match the backend's MAT_API_KEY exactly. Leave blank if it isn't configured.
         </Text>
       </View>
 

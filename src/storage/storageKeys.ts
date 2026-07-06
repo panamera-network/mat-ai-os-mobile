@@ -1,5 +1,6 @@
 export const STORAGE_KEYS = {
   backendUrl: 'mat-ai-os:backend-url',
+  apiKey: 'mat-ai-os:api-key',
   sessionId: 'mat-ai-os:session-id',
   notificationsEnabled: 'mat-ai-os:notifications-enabled',
   expoPushToken: 'mat-ai-os:expo-push-token',

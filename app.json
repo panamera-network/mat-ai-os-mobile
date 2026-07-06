@@ -34,7 +34,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "backendUrl": ""
+      "backendUrl": "https://palmer-have-critics-province.trycloudflare.com"
     },
     "plugins": [
       [

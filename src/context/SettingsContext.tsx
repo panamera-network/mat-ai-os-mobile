@@ -11,39 +11,49 @@ interface SettingsState {
   sessionId: string
   notificationsEnabled: boolean
   backendUrl: string
+  apiKey: string
   loaded: boolean
   newSession: () => Promise<void>
   setNotificationsEnabled: (enabled: boolean) => Promise<void>
   setBackendUrl: (url: string) => Promise<void>
+  setApiKey: (key: string) => Promise<void>
 }
 
 const SettingsContext = createContext<SettingsState>({
   sessionId: '',
   notificationsEnabled: true,
   backendUrl: DEFAULT_BASE_URL,
+  apiKey: '',
   loaded: false,
   newSession: async () => {},
   setNotificationsEnabled: async () => {},
   setBackendUrl: async () => {},
+  setApiKey: async () => {},
 })
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionIdState] = useState('')
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true)
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BASE_URL)
+  const [apiKey, setApiKeyState] = useState('')
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     const load = async () => {
-      const [storedSession, storedNotif] = await Promise.all([
+      const [storedSession, storedNotif, storedApiKey] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.sessionId),
         AsyncStorage.getItem(STORAGE_KEYS.notificationsEnabled),
+        AsyncStorage.getItem(STORAGE_KEYS.apiKey),
       ])
 
       const session = storedSession || generateSessionId()
       setSessionIdState(session)
       setNotificationsEnabledState(storedNotif !== 'false')
       if (!storedSession) await AsyncStorage.setItem(STORAGE_KEYS.sessionId, session)
+
+      const key = storedApiKey || ''
+      setApiKeyState(key)
+      matOsClient.setApiKey(key)
 
       // Auto-discover backend — try cached URL first, then scan candidates
       const cachedUrl = await AsyncStorage.getItem(STORAGE_KEYS.backendUrl)
@@ -52,9 +62,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setBackendUrlState(cachedUrl)
         // Only re-scan if the saved URL stopped working — a URL the user typed into
         // Settings must not be silently swapped out while it's still healthy.
-        probeBackend(cachedUrl).then(async (ok) => {
+        probeBackend(cachedUrl, key).then(async (ok) => {
           if (ok) return
-          const found = await discoverBackend()
+          const found = await discoverBackend(key)
           if (found) {
             matOsClient.setBaseUrl(found)
             setBackendUrlState(found)
@@ -62,7 +72,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           }
         })
       } else {
-        const found = await discoverBackend()
+        const found = await discoverBackend(key)
         const url = found ?? DEFAULT_BASE_URL
         matOsClient.setBaseUrl(url)
         setBackendUrlState(url)
@@ -95,9 +105,27 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEYS.backendUrl, cleaned)
   }, [])
 
+  const setApiKey = useCallback(async (key: string) => {
+    const cleaned = key.trim()
+    setApiKeyState(cleaned)
+    matOsClient.setApiKey(cleaned)
+    if (cleaned) await AsyncStorage.setItem(STORAGE_KEYS.apiKey, cleaned)
+    else await AsyncStorage.removeItem(STORAGE_KEYS.apiKey)
+  }, [])
+
   return (
     <SettingsContext.Provider
-      value={{ sessionId, notificationsEnabled, backendUrl, loaded, newSession, setNotificationsEnabled, setBackendUrl }}
+      value={{
+        sessionId,
+        notificationsEnabled,
+        backendUrl,
+        apiKey,
+        loaded,
+        newSession,
+        setNotificationsEnabled,
+        setBackendUrl,
+        setApiKey,
+      }}
     >
       {children}
     </SettingsContext.Provider>

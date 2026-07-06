@@ -25,21 +25,29 @@ function buildCandidates(): string[] {
   return [...new Set(candidates)]
 }
 
-/** Check whether one specific backend URL is reachable (GET /health). */
-export async function probeBackend(url: string): Promise<boolean> {
+/** Check whether one specific backend URL is reachable (GET /health). Pass apiKey when
+ *  the backend has MAT_API_KEY configured — every route requires it once set, /health
+ *  included, so an unauthenticated probe would otherwise always read as unreachable. */
+export async function probeBackend(url: string, apiKey?: string): Promise<boolean> {
   try {
-    const res = await fetch(`${url.replace(/\/+$/, '')}/health`, { signal: AbortSignal.timeout(2500) })
+    const res = await fetch(`${url.replace(/\/+$/, '')}/health`, {
+      signal: AbortSignal.timeout(2500),
+      headers: apiKey ? { 'X-API-Key': apiKey } : undefined,
+    })
     return res.ok
   } catch {
     return false
   }
 }
 
-export async function discoverBackend(): Promise<string | null> {
+export async function discoverBackend(apiKey?: string): Promise<string | null> {
   const candidates = buildCandidates()
   for (const url of candidates) {
     try {
-      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2500) })
+      const res = await fetch(`${url}/health`, {
+        signal: AbortSignal.timeout(2500),
+        headers: apiKey ? { 'X-API-Key': apiKey } : undefined,
+      })
       if (res.ok) return url
     } catch {}
   }
@@ -139,6 +147,7 @@ const OFFLINE_MESSAGE = (url: string) => `Could not reach MAT-AI-OS at ${url}. C
 export class MatOSClient {
   private baseUrl: string
   private sessionId: string | null = null
+  private apiKey: string | null = null
 
   constructor(baseUrl: string = DEFAULT_BASE_URL) {
     this.baseUrl = baseUrl.replace(/\/+$/, '')
@@ -160,8 +169,27 @@ export class MatOSClient {
     return this.sessionId
   }
 
+  /** Shared secret matching the backend's MAT_API_KEY (see main.py) — required on every
+   *  request once the backend has one configured. Blank/null matches the backend's own
+   *  "auth disabled" default. */
+  setApiKey(apiKey: string | null): void {
+    this.apiKey = apiKey || null
+  }
+
+  getApiKey(): string | null {
+    return this.apiKey
+  }
+
   private url(path: string): string {
     return `${this.baseUrl}${path}`
+  }
+
+  /** Every request in this client goes through here instead of calling fetch(this.url(...))
+   *  directly, so the API key header is attached exactly once, in one place. */
+  private doFetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers)
+    if (this.apiKey) headers.set('X-API-Key', this.apiKey)
+    return fetch(this.url(path), { ...init, headers })
   }
 
   /** POST /task or /task/upload (when a file is attached). Never throws. */
@@ -178,9 +206,9 @@ export class MatOSClient {
         // React Native's fetch/FormData polyfill accepts {uri, name, type} directly —
         // no need to read the file into memory ourselves.
         form.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' } as unknown as Blob)
-        response = await fetch(this.url('/task/upload'), { method: 'POST', body: form })
+        response = await this.doFetch('/task/upload', { method: 'POST', body: form })
       } else {
-        response = await fetch(this.url('/task'), {
+        response = await this.doFetch('/task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ task: message, session_id: activeSessionId }),
@@ -226,7 +254,7 @@ export class MatOSClient {
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
       let record: { status: string; result: string | null; error: string | null }
       try {
-        const response = await fetch(this.url(`/queue/${taskId}`), { signal: AbortSignal.timeout(5000) })
+        const response = await this.doFetch(`/queue/${taskId}`, { signal: AbortSignal.timeout(5000) })
         if (!response.ok) continue
         record = (await response.json()) as { status: string; result: string | null; error: string | null }
       } catch {
@@ -244,7 +272,7 @@ export class MatOSClient {
     try {
       const form = new FormData()
       form.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'audio/m4a' } as unknown as Blob)
-      const response = await fetch(this.url('/voice/transcribe'), { method: 'POST', body: form })
+      const response = await this.doFetch('/voice/transcribe', { method: 'POST', body: form })
       if (!response.ok) return { ok: false, error: `Transcription failed: HTTP ${response.status}` }
       const data = (await response.json()) as { text: string }
       return { ok: true, text: data.text }
@@ -256,7 +284,7 @@ export class MatOSClient {
   /** GET /health — online/offline + agent/skill counts. */
   async getStatus(): Promise<{ online: true; data: HealthStatus } | { online: false; error: string }> {
     try {
-      const response = await fetch(this.url('/health'), { signal: AbortSignal.timeout(5000) })
+      const response = await this.doFetch('/health', { signal: AbortSignal.timeout(5000) })
       if (!response.ok) return { online: false, error: `HTTP ${response.status}` }
       const data = (await response.json()) as HealthStatus
       return { online: true, data }
@@ -267,7 +295,7 @@ export class MatOSClient {
 
   async getAgents(): Promise<Agent[]> {
     try {
-      const response = await fetch(this.url('/agents'), { signal: AbortSignal.timeout(5000) })
+      const response = await this.doFetch('/agents', { signal: AbortSignal.timeout(5000) })
       if (!response.ok) return []
       return (await response.json()) as Agent[]
     } catch {
@@ -277,7 +305,7 @@ export class MatOSClient {
 
   async getQueuePendingCount(): Promise<number> {
     try {
-      const response = await fetch(this.url('/queue'), { signal: AbortSignal.timeout(5000) })
+      const response = await this.doFetch('/queue', { signal: AbortSignal.timeout(5000) })
       if (!response.ok) return 0
       const data = (await response.json()) as { tasks: Array<{ status: string }> }
       return data.tasks.filter((t) => t.status === 'pending' || t.status === 'running').length
@@ -288,7 +316,7 @@ export class MatOSClient {
 
   async getGoals(): Promise<Goal[]> {
     try {
-      const response = await fetch(this.url('/goals'), { signal: AbortSignal.timeout(5000) })
+      const response = await this.doFetch('/goals', { signal: AbortSignal.timeout(5000) })
       if (!response.ok) return []
       const data = (await response.json()) as { goals: Goal[] }
       return data.goals
@@ -299,7 +327,7 @@ export class MatOSClient {
 
   async addGoal(title: string, type: 'short_term' | 'long_term'): Promise<Goal | null> {
     try {
-      const response = await fetch(this.url('/goals'), {
+      const response = await this.doFetch('/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, type }),
@@ -313,7 +341,7 @@ export class MatOSClient {
 
   async completeGoal(goalId: string): Promise<boolean> {
     try {
-      const response = await fetch(this.url(`/goals/${goalId}/complete`), { method: 'POST' })
+      const response = await this.doFetch(`/goals/${goalId}/complete`, { method: 'POST' })
       return response.ok
     } catch {
       return false
@@ -322,7 +350,7 @@ export class MatOSClient {
 
   async getDailyBriefing(): Promise<DailyBriefing | null> {
     try {
-      const response = await fetch(this.url('/briefing'), { signal: AbortSignal.timeout(5000) })
+      const response = await this.doFetch('/briefing', { signal: AbortSignal.timeout(5000) })
       if (!response.ok) return null
       const data = (await response.json()) as { daily: DailyBriefing | null }
       return data.daily
@@ -333,7 +361,7 @@ export class MatOSClient {
 
   async getIdentity(): Promise<IdentityProfile | null> {
     try {
-      const response = await fetch(this.url('/identity'), { signal: AbortSignal.timeout(5000) })
+      const response = await this.doFetch('/identity', { signal: AbortSignal.timeout(5000) })
       if (!response.ok) return null
       return (await response.json()) as IdentityProfile
     } catch {
@@ -343,7 +371,7 @@ export class MatOSClient {
 
   async updateIdentity(field: string, value: unknown): Promise<IdentityProfile | null> {
     try {
-      const response = await fetch(this.url('/identity'), {
+      const response = await this.doFetch('/identity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ field, value }),
@@ -357,7 +385,7 @@ export class MatOSClient {
 
   async submitFeedback(taskId: string, rating: number): Promise<void> {
     try {
-      await fetch(this.url('/feedback'), {
+      await this.doFetch('/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: taskId, rating }),
@@ -373,7 +401,7 @@ export class MatOSClient {
       const now = new Date()
       const title = `Memo ${now.toISOString().slice(0, 16).replace('T', ' ')}`
       const content = `# ${title}\n\n${text}\n\n---\n_Captured via MAT.ai OS mobile_`
-      const response = await fetch(this.url('/obsidian/note'), {
+      const response = await this.doFetch('/obsidian/note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content, folder: 'Mobile/Memos' }),
@@ -392,7 +420,7 @@ export class MatOSClient {
       const now = new Date()
       const title = `Reminder ${now.toISOString().slice(0, 16).replace('T', ' ')}`
       const content = `# ${title}\n\n- [ ] ${text}\n\n---\n_Captured via MAT.ai OS mobile_`
-      const response = await fetch(this.url('/obsidian/note'), {
+      const response = await this.doFetch('/obsidian/note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content, folder: 'Mobile/Reminders' }),
@@ -408,7 +436,7 @@ export class MatOSClient {
   /** POST /notifications/register-device — register this device's Expo push token. */
   async registerDevice(token: string, platform: string): Promise<boolean> {
     try {
-      const response = await fetch(this.url('/notifications/register-device'), {
+      const response = await this.doFetch('/notifications/register-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, platform }),
