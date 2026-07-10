@@ -47,6 +47,17 @@ interface HomeScreenProps {
   pttToggle: number
 }
 
+// A fallback reply ends with "\n\n_<provider label>_" (see agents/base_agent.py's
+// run() + core/llm_provider.py's normalize_provider_label on the backend) - split it
+// off so it can render smaller/italic/muted instead of as part of the main answer.
+const MODEL_LABEL_PATTERN = /\n\n_([^_\n]+)_$/
+
+function splitModelLabel(text: string): { body: string; label: string | null } {
+  const match = text.match(MODEL_LABEL_PATTERN)
+  if (!match || match.index === undefined) return { body: text, label: null }
+  return { body: text.slice(0, match.index), label: match[1] }
+}
+
 export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps): JSX.Element {
   const insets = useSafeAreaInsets()
   const { colors, isDark } = useTheme()
@@ -436,7 +447,9 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
                 <Text style={[styles.chatEmptyText, { color: colors.textSecondary }]}>Ask MAT.ai OS anything.</Text>
               </View>
             ) : (
-              recentMessages.map((item) => (
+              recentMessages.map((item) => {
+                const { body, label } = item.role === 'assistant' ? splitModelLabel(item.text) : { body: item.text, label: null }
+                return (
                 <View
                   key={item.id}
                   style={[
@@ -451,8 +464,11 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
                       item.role === 'system' && { color: colors.accentRed },
                     ]}
                   >
-                    {item.text}
+                    {body}
                   </Text>
+                  {label && (
+                    <Text style={[styles.modelLabelText, { color: colors.textSecondary }]}>{label}</Text>
+                  )}
                   {item.feedbackTaskId && (
                     <View style={styles.feedbackRow}>
                       <TouchableOpacity
@@ -470,7 +486,8 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
                     </View>
                   )}
                 </View>
-              ))
+                )
+              })
             )}
           </ScrollView>
         )}
@@ -712,6 +729,12 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 24,
     fontWeight: '500',
+  },
+  modelLabelText: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 2,
+    opacity: 0.75,
   },
   feedbackRow: {
     flexDirection: 'row',
