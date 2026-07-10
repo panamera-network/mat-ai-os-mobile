@@ -1,11 +1,14 @@
 // src/navigation/RootNavigator.tsx
 import { NavigationContainer, DarkTheme, DefaultTheme, type Theme } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import { View, Text, TouchableOpacity, StyleSheet, PanResponder, Animated } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, PanResponder, Animated, ScrollView } from 'react-native'
 import HomeScreen from '../screens/HomeScreen'
 import AgentsScreen from '../screens/AgentsScreen'
 import GoalsScreen from '../screens/GoalsScreen'
 import SettingsScreen from '../screens/SettingsScreen'
+import ApprovalsScreen from '../screens/ApprovalsScreen'
+import LoopsScreen from '../screens/LoopsScreen'
+import LearnScreen from '../screens/LearnScreen'
 import {
   AgentsIcon,
   GoalsIcon,
@@ -14,6 +17,9 @@ import {
   SettingsIcon,
   MemoIcon,
   ReminderIcon,
+  ShieldIcon,
+  LoopIcon,
+  LearnIcon,
 } from '../theme/icons/MatIcons'
 import { useApp, type PttMode } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
@@ -202,6 +208,9 @@ function CustomTabBar(): JSX.Element | null {
     setAgentsVisible,
     setGoalsVisible,
     setSettingsVisible,
+    setApprovalsVisible,
+    setLoopsVisible,
+    setLearnVisible,
     toggleStats,
     commandComposerVisible,
   } = useApp()
@@ -210,12 +219,18 @@ function CustomTabBar(): JSX.Element | null {
   const handleGoals = () => setGoalsVisible(true)
   const handleSettings = () => setSettingsVisible(true)
   const handleStats = () => toggleStats()
+  const handleApprovals = () => setApprovalsVisible(true)
+  const handleLoops = () => setLoopsVisible(true)
+  const handleLearn = () => setLearnVisible(true)
 
   if (commandComposerVisible) return null
 
   const items = [
     { label: 'agent', onPress: handleAgents, icon: AgentsIcon },
     { label: 'goal', onPress: handleGoals, icon: GoalsIcon },
+    { label: 'loop', onPress: handleLoops, icon: LoopIcon },
+    { label: 'ok?', onPress: handleApprovals, icon: ShieldIcon },
+    { label: 'learn', onPress: handleLearn, icon: LearnIcon },
     { label: 'stat', onPress: handleStats, icon: StatsIcon },
     { label: 'setting', onPress: handleSettings, icon: SettingsIcon },
   ]
@@ -247,26 +262,33 @@ function CustomTabBar(): JSX.Element | null {
             </View>
           </TouchableOpacity>
           <View style={styles.segmentDivider} />
-          {items.map((item, index) => {
-            const Icon = item.icon
-            return (
-              <React.Fragment key={item.label}>
-                <TouchableOpacity
-                  style={styles.segmentButton}
-                  onPressIn={(event) => event.stopPropagation()}
-                  onPress={() => {
-                    item.onPress()
-                    setNavExpanded(false)
-                  }}
-                  activeOpacity={0.72}
-                >
-                  <Icon size={16} color={colors.textPrimary} strokeWidth={1.8} />
-                  <Text style={[styles.segmentText, { color: colors.textPrimary }]}>{item.label}</Text>
-                </TouchableOpacity>
-                {index < items.length - 1 && <View style={[styles.segmentDivider, { backgroundColor: colors.border }]} />}
-              </React.Fragment>
-            )
-          })}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.segmentScrollContent}
+            onStartShouldSetResponder={() => true}
+          >
+            {items.map((item, index) => {
+              const Icon = item.icon
+              return (
+                <React.Fragment key={item.label}>
+                  <TouchableOpacity
+                    style={styles.segmentButtonScroll}
+                    onPressIn={(event) => event.stopPropagation()}
+                    onPress={() => {
+                      item.onPress()
+                      setNavExpanded(false)
+                    }}
+                    activeOpacity={0.72}
+                  >
+                    <Icon size={16} color={colors.textPrimary} strokeWidth={1.8} />
+                    <Text style={[styles.segmentText, { color: colors.textPrimary }]}>{item.label}</Text>
+                  </TouchableOpacity>
+                  {index < items.length - 1 && <View style={[styles.segmentDivider, { backgroundColor: colors.border }]} />}
+                </React.Fragment>
+              )
+            })}
+          </ScrollView>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
@@ -300,6 +322,12 @@ export default function RootNavigator(): JSX.Element {
     setGoalsVisible,
     settingsVisible,
     setSettingsVisible,
+    approvalsVisible,
+    setApprovalsVisible,
+    loopsVisible,
+    setLoopsVisible,
+    learnVisible,
+    setLearnVisible,
     statsToggle,
     pttToggle,
   } = useApp()
@@ -338,6 +366,9 @@ export default function RootNavigator(): JSX.Element {
         <AgentsScreen visible={agentsVisible} onClose={() => setAgentsVisible(false)} />
         <GoalsScreen visible={goalsVisible} onClose={() => setGoalsVisible(false)} />
         <SettingsScreen visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
+        <ApprovalsScreen visible={approvalsVisible} onClose={() => setApprovalsVisible(false)} />
+        <LoopsScreen visible={loopsVisible} onClose={() => setLoopsVisible(false)} />
+        <LearnScreen visible={learnVisible} onClose={() => setLearnVisible(false)} />
       </View>
     </NavigationContainer>
   )
@@ -387,6 +418,17 @@ const styles = StyleSheet.create({
   },
   segmentButton: {
     flex: 1,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  segmentScrollContent: {
+    alignItems: 'center',
+    height: '100%',
+  },
+  segmentButtonScroll: {
+    width: 46,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',

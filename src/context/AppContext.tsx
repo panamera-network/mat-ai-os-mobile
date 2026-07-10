@@ -10,6 +10,12 @@ export interface AppContextType {
   setGoalsVisible: (v: boolean) => void
   settingsVisible: boolean
   setSettingsVisible: (v: boolean) => void
+  approvalsVisible: boolean
+  setApprovalsVisible: (v: boolean) => void
+  loopsVisible: boolean
+  setLoopsVisible: (v: boolean) => void
+  learnVisible: boolean
+  setLearnVisible: (v: boolean) => void
   statsToggle: number
   toggleStats: () => void
   pttToggle: number
@@ -32,6 +38,9 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   const [agentsVisible, setAgentsVisible] = useState<boolean>(false)
   const [goalsVisible, setGoalsVisible] = useState<boolean>(false)
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false)
+  const [approvalsVisible, setApprovalsVisible] = useState<boolean>(false)
+  const [loopsVisible, setLoopsVisible] = useState<boolean>(false)
+  const [learnVisible, setLearnVisible] = useState<boolean>(false)
   const [statsToggle, setStatsToggle] = useState<number>(0)
   const [pttToggle, setPttToggle] = useState<number>(0)
   const [isRecording, setIsRecording] = useState<boolean>(false)
@@ -59,6 +68,12 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
     setGoalsVisible,
     settingsVisible,
     setSettingsVisible,
+    approvalsVisible,
+    setApprovalsVisible,
+    loopsVisible,
+    setLoopsVisible,
+    learnVisible,
+    setLearnVisible,
     statsToggle,
     toggleStats,
     pttToggle,

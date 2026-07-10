@@ -163,6 +163,32 @@ export const ReminderIcon = ({ size = 24, color = '#fff', strokeWidth = 1.5 }: I
   </Svg>
 )
 
+// 🛡️ Approvals (shield) icon
+export const ShieldIcon = ({ size = 24, color = '#fff', strokeWidth = 1.5 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    <Polyline points="9 12 11 14 15 10" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+)
+
+// 🔁 Loops icon
+export const LoopIcon = ({ size = 24, color = '#fff', strokeWidth = 1.5 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M17 2l4 4-4 4" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3 12v-2a4 4 0 0 1 4-4h14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M7 22l-4-4 4-4" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M21 12v2a4 4 0 0 1-4 4H3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+)
+
+// 📚 Learn (book) icon
+export const LearnIcon = ({ size = 24, color = '#fff', strokeWidth = 1.5 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+)
+
 // Refresh icon
 export const RefreshIcon = ({ size = 24, color = '#fff', strokeWidth = 1.5 }: IconProps) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

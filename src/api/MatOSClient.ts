@@ -131,6 +131,48 @@ export interface DailyBriefing {
   alerts: unknown[]
 }
 
+export interface Loop {
+  id: string
+  name: string
+  description: string
+  trigger: string
+  schedule: string
+  task: string
+  domain: string | null
+  pipeline: string
+  status: string
+  last_run: string | null
+  next_run: string | null
+}
+
+export interface McpApproval {
+  id: string
+  status: 'pending' | 'executed' | 'failed' | 'denied'
+  agent_id: string
+  domain: string
+  server: string
+  tool: string
+  params: Record<string, unknown>
+  reason: string
+  result: string | null
+  error: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface LearnSuggestion {
+  status: 'suggest' | 'rejected'
+  decision: string
+  skill_id: string | null
+  domain: string | null
+  reason: string
+  source: string
+  name: string | null
+  description: string | null
+  prompt_fragment?: string | null
+  tools_required?: string[]
+}
+
 export interface IdentityProfile {
   name: string
   nickname: string
@@ -428,6 +470,99 @@ export class MatOSClient {
       if (!response.ok) return { ok: false, error: `Failed to save reminder: HTTP ${response.status}` }
       const data = (await response.json()) as { filename: string }
       return { ok: true, filename: data.filename }
+    } catch {
+      return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
+    }
+  }
+
+  /** GET /loops — every automation loop (active, paused, or otherwise), newest first. */
+  async getLoops(): Promise<Loop[]> {
+    try {
+      const response = await this.doFetch('/loops', { signal: AbortSignal.timeout(5000) })
+      if (!response.ok) return []
+      return (await response.json()) as Loop[]
+    } catch {
+      return []
+    }
+  }
+
+  /** GET /mcp/approvals — every MCP tool call currently held pending human approval. */
+  async getPendingApprovals(): Promise<McpApproval[]> {
+    try {
+      const response = await this.doFetch('/mcp/approvals', { signal: AbortSignal.timeout(5000) })
+      if (!response.ok) return []
+      const data = (await response.json()) as { approvals: McpApproval[] }
+      return data.approvals
+    } catch {
+      return []
+    }
+  }
+
+  /** POST /mcp/approvals/{id}/approve — run the held tool call for real. */
+  async approveMcpApproval(approvalId: string): Promise<{ ok: true; approval: McpApproval } | MatOSError> {
+    try {
+      const response = await this.doFetch(`/mcp/approvals/${approvalId}/approve`, { method: 'POST' })
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => '')
+        return { ok: false, error: `Approve failed: HTTP ${response.status}${bodyText ? `: ${bodyText}` : ''}` }
+      }
+      return { ok: true, approval: (await response.json()) as McpApproval }
+    } catch {
+      return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
+    }
+  }
+
+  /** POST /mcp/approvals/{id}/deny — the held tool call never runs. */
+  async denyMcpApproval(approvalId: string, reason: string = ''): Promise<{ ok: true; approval: McpApproval } | MatOSError> {
+    try {
+      const response = await this.doFetch(`/mcp/approvals/${approvalId}/deny`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      })
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => '')
+        return { ok: false, error: `Deny failed: HTTP ${response.status}${bodyText ? `: ${bodyText}` : ''}` }
+      }
+      return { ok: true, approval: (await response.json()) as McpApproval }
+    } catch {
+      return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
+    }
+  }
+
+  /** POST /learn — run a URL/GitHub repo/raw text through the Governance Layer and get
+   *  back a suggestion (or rejection). Nothing is created until confirmLearn() approves it. */
+  async submitLearn(source: string): Promise<{ ok: true; suggestion: LearnSuggestion } | MatOSError> {
+    try {
+      const response = await this.doFetch('/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      })
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => '')
+        return { ok: false, error: `Learn failed: HTTP ${response.status}${bodyText ? `: ${bodyText}` : ''}` }
+      }
+      return { ok: true, suggestion: (await response.json()) as LearnSuggestion }
+    } catch {
+      return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
+    }
+  }
+
+  /** POST /learn/confirm — execute (approved=true) or discard (approved=false) a
+   *  suggestion previously returned by submitLearn(). */
+  async confirmLearn(suggestion: LearnSuggestion, approved: boolean): Promise<{ ok: true; result: Record<string, unknown> } | MatOSError> {
+    try {
+      const response = await this.doFetch('/learn/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestion, approved }),
+      })
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => '')
+        return { ok: false, error: `Learn confirm failed: HTTP ${response.status}${bodyText ? `: ${bodyText}` : ''}` }
+      }
+      return { ok: true, result: (await response.json()) as Record<string, unknown> }
     } catch {
       return { ok: false, error: OFFLINE_MESSAGE(this.baseUrl) }
     }
