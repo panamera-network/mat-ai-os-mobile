@@ -2,6 +2,7 @@
 import { NavigationContainer, DarkTheme, DefaultTheme, type Theme } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { View, Text, TouchableOpacity, StyleSheet, PanResponder, Animated, ScrollView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import HomeScreen from '../screens/HomeScreen'
 import AgentsScreen from '../screens/AgentsScreen'
 import GoalsScreen from '../screens/GoalsScreen'
@@ -37,11 +38,16 @@ const PTT_MODES: Array<{ id: PttMode; label: string; color: string; icon: typeof
   { id: 'reminder', label: 'Reminder', color: '#f59e0b', icon: ReminderIcon },
 ]
 
-// Fan positions relative to PTT orb center — arc going left (orb is right-side)
+// Fan positions relative to PTT orb center — arc going left (orb is right-side).
+// All dy values sit safely below -SWIPE_THRESHOLD (-45) so hover-detection (which only
+// starts tracking once the finger has moved up past that threshold) can still reach
+// every item. Each adjacent pair is also spaced so |dx| or |dy| clears the fanItem's own
+// size (68x58) with margin — two boxes only avoid overlapping if they're separated far
+// enough on AT LEAST ONE axis, not just far enough apart in raw diagonal distance.
 const FAN_POSITIONS = [
-  { dx: -52,  dy: -108 }, // memo — upper left
-  { dx: -110, dy: -68  }, // agent — left
-  { dx: -122, dy: -8   }, // reminder — lower left
+  { dx: -56,  dy: -171 }, // memo — steep upper-left
+  { dx: -127, dy: -127 }, // agent — diagonal left
+  { dx: -169, dy: -62  }, // reminder — shallow lower-left
 ]
 
 const HOLD_THRESHOLD_MS = 400
@@ -204,6 +210,16 @@ function PttOrb(): JSX.Element {
 function CustomTabBar(): JSX.Element | null {
   const [navExpanded, setNavExpanded] = React.useState(false)
   const { colors, isDark } = useTheme()
+  const insets = useSafeAreaInsets()
+  const navAnim = React.useRef(new Animated.Value(0)).current
+
+  React.useEffect(() => {
+    Animated.timing(navAnim, {
+      toValue: navExpanded ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start()
+  }, [navExpanded, navAnim])
   const {
     setAgentsVisible,
     setGoalsVisible,
@@ -238,13 +254,23 @@ function CustomTabBar(): JSX.Element | null {
   const glassShadow = isDark ? '0 14px 34px rgba(0,0,0,0.42)' : '0 12px 30px rgba(15, 23, 42, 0.10)'
 
   return (
-    <View style={[styles.tabBar, { backgroundColor: colors.bgApp }]}>
+    <View style={[styles.tabBar, { backgroundColor: colors.bgApp, paddingBottom: 18 + insets.bottom }]}>
       {navExpanded ? (
-        <TouchableOpacity
+        <Animated.View
           style={[
             styles.segmentedNav,
-            { backgroundColor: glassBg, borderColor: colors.border, boxShadow: glassShadow },
+            {
+              backgroundColor: glassBg,
+              borderColor: colors.border,
+              boxShadow: glassShadow,
+              opacity: navAnim,
+              transformOrigin: 'left',
+              transform: [{ scaleX: navAnim.interpolate({ inputRange: [0, 1], outputRange: [0.1, 1] }) }],
+            },
           ]}
+        >
+        <TouchableOpacity
+          style={styles.segmentedNavTouchable}
           onPress={() => setNavExpanded(false)}
           activeOpacity={0.82}
         >
@@ -290,6 +316,7 @@ function CustomTabBar(): JSX.Element | null {
             })}
           </ScrollView>
         </TouchableOpacity>
+        </Animated.View>
       ) : (
         <TouchableOpacity
           style={[
@@ -376,13 +403,11 @@ export default function RootNavigator(): JSX.Element {
 
 const styles = StyleSheet.create({
   tabBar: {
-    height: 92,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingTop: 8,
-    paddingBottom: 18,
     overflow: 'visible',
   },
   segmentedNav: {
@@ -391,9 +416,12 @@ const styles = StyleSheet.create({
     maxWidth: 260,
     borderRadius: 26,
     borderWidth: 1,
+    overflow: 'hidden',
+  },
+  segmentedNavTouchable: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    overflow: 'hidden',
   },
   navBubble: {
     width: 54,

@@ -1,6 +1,7 @@
 // src/screens/HomeScreen.tsx
 import { useRef, useState, useCallback, useEffect, JSX } from 'react'
 import {
+  Animated,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -89,6 +90,16 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
 
   const scrollViewRef = useRef<ScrollView>(null)
   const inputRef = useRef<TextInput>(null)
+  const revealAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.timing(revealAnim, {
+      toValue: composerExpanded ? 1 : 0,
+      duration: 240,
+      useNativeDriver: true,
+    }).start()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerExpanded])
 
   useEffect(() => {
     if (statsToggle > 0) {
@@ -418,7 +429,6 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
           style={[
             styles.waveformWrap,
             statsVisible && styles.waveformWrapStats,
-            showChat && styles.waveformWrapChat,
           ]}
           onPress={openComposer}
           activeOpacity={0.84}
@@ -430,15 +440,25 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
 
         {!showChat && (
           <View style={[styles.modeBadge, { borderColor: activeMeta.color + '55' }]}>
-            <activeMeta.Icon size={12} color={activeMeta.color} strokeWidth={2} />
+            <activeMeta.Icon size={9} color={activeMeta.color} strokeWidth={2} />
             <Text style={[styles.modeBadgeText, { color: activeMeta.color }]}>{activeMeta.label}</Text>
           </View>
         )}
 
         {showChat && (
+          <Animated.View
+            style={[
+              styles.chatScroll,
+              {
+                opacity: revealAnim,
+                transformOrigin: 'right',
+                transform: [{ scaleX: revealAnim.interpolate({ inputRange: [0, 1], outputRange: [0.05, 1] }) }],
+              },
+            ]}
+          >
           <ScrollView
             ref={scrollViewRef}
-            style={styles.chatScroll}
+            style={styles.chatScrollInner}
             contentContainerStyle={styles.chatContent}
             showsVerticalScrollIndicator={false}
           >
@@ -490,10 +510,21 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
               })
             )}
           </ScrollView>
+          </Animated.View>
         )}
 
         {composerExpanded && (
-          <View style={styles.composerDock}>
+          <Animated.View
+            style={[
+              styles.composerDock,
+              {
+                bottom: 16 + insets.bottom,
+                opacity: revealAnim,
+                transformOrigin: 'right',
+                transform: [{ scaleX: revealAnim.interpolate({ inputRange: [0, 1], outputRange: [0.05, 1] }) }],
+              },
+            ]}
+          >
             {attachment && (
               <View style={[styles.attachmentPreview, { backgroundColor: subtleBg, borderColor: colors.border, boxShadow: glassShadow }]}>
                 <AttachmentIcon size={14} color={colors.textPrimary} />
@@ -545,7 +576,7 @@ export default function HomeScreen({ statsToggle, pttToggle }: HomeScreenProps):
                 <SendIcon size={21} color={colors.textPrimary} strokeWidth={1.8} />
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         <AttachmentSheet
@@ -662,10 +693,6 @@ const styles = StyleSheet.create({
   waveformWrapStats: {
     marginTop: 38,
   },
-  waveformWrapChat: {
-    marginTop: 18,
-    height: 142,
-  },
   waveformScale: {
     width: '100%',
     transform: [{ scale: 0.82 }],
@@ -686,22 +713,25 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     marginTop: -8,
   },
   modeBadgeText: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   chatScroll: {
     flex: 1,
     marginTop: 4,
     marginBottom: 92,
+  },
+  chatScrollInner: {
+    flex: 1,
   },
   chatContent: {
     paddingTop: 12,
@@ -749,7 +779,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    bottom: 16,
     gap: 8,
   },
   attachmentPreview: {
